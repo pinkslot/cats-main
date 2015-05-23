@@ -70,6 +70,13 @@ $st_memory_limit_exceeded = 17;
 $st_ignore_submit = 18;
 $st_idleness_limit_exceeded = 19;
 
+
+# Values for gen_problems.state.
+$gst_not_processed = 0;
+$gst_generating = 1;
+$gst_error = 2;
+$gst_ready = 10;
+
 # Values for contest_problems.status.
 $problem_st_ready     = 0;
 $problem_st_suspended = 1;

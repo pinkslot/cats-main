@@ -145,6 +145,10 @@ function chg_code(st_sel, pid)
   <p><label for="remote_url">[% capt.problem_url %]:</label><input type="text" id="remote_url" name="remote_url" size="30"/></p>
   <p><input type="submit" name="add_remote" value="[% capt.add_new %]" class="button" /></p>
 </div>
+<div class="problem_submit">
+  <p><label for="gen">[% capt.problem_gen %]:</label><input type="text" id="gen" name="gen" size="30"/></p>
+  <p><input type="submit" name="add_gen" value="[% capt.add_new %]" class="button" /></p>
+</div>
 [% END %]
 <div style="clear: both;"></div>
 [% END %]

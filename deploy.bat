@@ -228,29 +228,16 @@ __END__
 
 :get_firebird_path
 @setlocal
-	@set /p result=Specify Firebird path(Default is - D:\Program Files (x86)\Firebird\Firebird_2_5\): 
-	@if "%result%" == "" set result=D:\Program Files (x86)\Firebird\Firebird_2_5\
+	@set /p result=Specify Firebird path(Default is - C:\Program Files (x86)\Firebird\Firebird_2_1): 
+	@if "%result%" == "" set "result=C:\Program Files (x86)\Firebird\Firebird_2_1\"
 	@IF %result:~-1%==\ SET result=%result:~0,-1%
 @endlocal & set _result=%result%
 @goto :eof
 
 :find_visual_studio
 @setlocal
-	@echo Looking for Visual Studio installed...
-	@for %%x in (Microsoft\VisualStudio\SxS\VS7 Wow6432Node\Microsoft\VisualStudio\SxS\VS7) do @(
-		@for %%r in (HKLM HKCU) do @(
-			@for /F "tokens=1,2*" %%i in ('reg query "%%r\SOFTWARE\%%x" /v "11.0"') DO @(
-				@for %%v in (16.0 15.0 14.0 13.0 12.0 11.0 10.0 9.0) do @(
-					@if "%%i"=="%%v" @(
-						@echo =^>Visual Studio %%v detected
-						@echo =^>Using Visual Studio %%v toolchain
-						@SET "vs_path=%%k"
-						@goto :GetVSCommonToolsDirHelper_end
-					)
-				)
-			)
-		)
-	)
+	@SET "vs_path=C:\Program Files (x86)\Microsoft Visual Studio 10.0\"
+	
 	:GetVSCommonToolsDirHelper_end
 	@if "%vs_path%"=="" @exit /B 1
 	@SET "vs_path=%vs_path%VC\bin\"
@@ -327,8 +314,8 @@ __END__
 :install_perl_modules
 @setlocal
 	@echo Installing perl modules...
-	@call cpanm %CPAN_PACKAGES%
-	@call cpanm -f %CPAN_FORCE_PACKAGES% 
+	@call C:\strawberry\perl\bin\cpanm %CPAN_PACKAGES%
+	@call C:\strawberry\perl\bin\cpanm -f %CPAN_FORCE_PACKAGES% 
 	@echo Downloading external perl modules...
 	@set formal_input="https://github.com/downloads/klenin/cats-main/FormalInput.tgz"
 	@call :download_file %formal_input% fi.tgz

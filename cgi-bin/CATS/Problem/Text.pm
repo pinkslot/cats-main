@@ -19,7 +19,7 @@ use XML::Parser::Expat;
 use Text::Aspell;
 
 use CATS::DB;
-use CATS::Misc qw($cid $contest $is_jury $t $uid cats_dir auto_ext init_template);
+use CATS::Misc qw(msg $cid $contest $is_jury $t $uid cats_dir auto_ext init_template);
 use CATS::StaticPages;
 
 my ($current_pid, $html_code, $spellchecker, $text_span);
@@ -288,6 +288,17 @@ sub problem_text_frame
             FROM problems WHERE id = ?~, { Slice => {} },
             $problem->{problem_id}) or next;
         $problem = { %$problem, %$p };
+
+        my $gp = $dbh->selectrow_hashref(q~
+            SELECT data, state FROM gen_problems 
+            WHERE account_id = ? AND problem_id = ?~, {},
+            $uid, $problem->{problem_id});
+        if ($gp) {
+            return msg(56) if $gp->{state} != $cats::gst_ready;
+            $problem->{author} = '$gp->{data}';
+            $problem->{statement} = $gp->{data};
+        }
+
         my $lang = $problem->{lang};
 
         if ($is_jury && !param('nokw')) {

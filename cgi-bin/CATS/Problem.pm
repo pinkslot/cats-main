@@ -14,6 +14,7 @@ use CATS::Misc qw(cats_dir msg);
 use CATS::StaticPages;
 use CATS::DevEnv;
 use FormalInput;
+use CATS::Problem::Generated;
 
 use fields qw(
     contest_id id import_log debug problem source checker
@@ -21,7 +22,7 @@ use fields qw(
     tests testsets samples objects keywords
     imports solutions generators modules pictures attachments
     test_defaults current_tests current_sample gen_groups
-    encoding stml zip zip_archive old_title replace repo tag_stack has_checker de_list run_method
+    encoding stml zip zip_archive old_title replace repo gen tag_stack has_checker de_list run_method
 );
 
 use CATS::Problem::Tests;
@@ -145,6 +146,44 @@ sub load
         unless ($self->{debug}) {
             $dbh->commit;
             eval { $self->add_history($message, $is_amend); };
+            $self->note("Warning: $@") if $@;
+        }
+        $self->note('Success import');
+        return 0;
+    }
+}
+
+
+sub load_gen
+{
+    my CATS::Problem $self = shift;
+    ($self->{source}, $self->{contest_id}, $self->{id}) = @_;
+    $self->{gen} = $self->{source};
+    $self->{problem}->{title}  = 'Generator-' . $self->{source};
+    $self->{problem}->{$_ . 'put_file'}  = $self->{problem}->{title} . ".$_" for qw(in out);
+
+    eval {
+        $self->insert;
+        my $cuids = $dbh->selectall_arrayref(q~
+            SELECT account_id FROM contest_accounts WHERE contest_id = ? AND is_admin = ? AND is_jury = ?~, 
+            { Slice => {} },
+            $self->{contest_id}, 0, 0);
+
+        CATS::Problem::Generated->new({
+            account_id => $_->{account_id},
+            contest_id => $self->{contest_id},
+            problem_id => $self->{id},
+        })->insert for @$cuids;
+    };
+
+    if ($@) {
+        $dbh->rollback unless $self->{debug};
+        $self->note("Import failed: $@");
+        return -1;
+    }
+    else {
+        unless ($self->{debug}) {
+            $dbh->commit;
             $self->note("Warning: $@") if $@;
         }
         $self->note('Success import');
@@ -738,17 +777,9 @@ sub delete_child_records($)
             problem_sources_import problem_keywords problem_attachments);
 }
 
-
-sub end_tag_Problem
+sub insert
 {
-    my CATS::Problem $self = shift;
-
-    $self->validate;
-
-    return if $self->{debug};
-
-    delete_child_records($self->{id}) if $self->{replace};
-
+    my CATS::Problem $self = shift;    
     my $sql = $self->{replace}
     ? q~
         UPDATE problems
@@ -765,9 +796,9 @@ sub end_tag_Problem
             title, lang, time_limit, memory_limit, difficulty, author, input_file, output_file,
             statement, pconstraints, input_format, output_format, formal_input, json_data, explanation, zip_archive,
             upload_date, std_checker, last_modified_by,
-            max_points, run_method, repo, id
+            max_points, run_method, repo, gen, id
         ) VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?
         )~;
 
     my $c = $dbh->prepare($sql);
@@ -780,10 +811,22 @@ sub end_tag_Problem
     $c->bind_param($i++, $self->{problem}->{std_checker});
     $c->bind_param($i++, $CATS::Misc::uid);
     $c->bind_param($i++, $self->{problem}->{max_points});
-    $c->bind_param($i++, $self->{run_method});
-    $c->bind_param($i++, $self->{repo});
-    $c->bind_param($i++, $self->{id});
+    $c->bind_param($i++, $self->{$_})
+        for qw(run_method repo gen id);
     $c->execute;
+}
+
+
+sub end_tag_Problem
+{
+    my CATS::Problem $self = shift;
+
+    $self->validate;
+
+    return if $self->{debug};
+
+    $self->insert;
+    delete_child_records($self->{id}) if $self->{replace};
 
     $self->insert_problem_content;
 }

@@ -21,6 +21,7 @@
     ignore_submit => 'do not test',
     problem_file => 'Problem file',
     problem_url => 'Problem repository url',
+    problem_gen => 'Problem generator',
     rename => 'rename',
     delete => 'delete',
     pull => 'pull',

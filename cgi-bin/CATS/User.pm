@@ -12,7 +12,7 @@ use CATS::Config;
 use CATS::Constants;
 use CATS::Data;
 use CATS::Countries;
-
+use CATS::Problem::Generated;
 
 sub new
 {
@@ -61,6 +61,19 @@ sub add_to_contest
         new_id, $p{contest_id}, $p{account_id}, 0, 0, 0, $p{is_ooc}, $p{is_remote} || 0,
         0, 0
     );
+    
+    my $gen_problems = $dbh->selectall_arrayref(q~
+        SELECT problem_id FROM contest_problems CP
+            INNER JOIN problems P ON CP.problem_id = P.id
+            WHERE CP.contest_id = ? AND P.gen IS NOT NULL~,
+        { Slice => {} },
+        $p{contest_id}
+    );
+    CATS::Problem::Generated->new({
+            account_id => $p{account_id},
+            contest_id => $p{contest_id},
+            problem_id => $_->{problem_id},
+    })->insert for @$gen_problems;
 }
 
 

@@ -148,7 +148,7 @@ sub problems_replace
 
 sub problems_add
 {
-    my ($source_name, $is_remote) = @_;
+    my ($source_name, $type) = @_;
     my $problem_code;
     if (!$contest->is_practice) {
         ($problem_code) = $contest->unused_problem_codes
@@ -156,9 +156,9 @@ sub problems_add
     }
 
     my CATS::Problem $p = CATS::Problem->new;
-    my $error = $is_remote
-              ? $p->load(CATS::Problem::Source::Git->new($source_name, $p), $cid, new_id, 0, $source_name)
-              : $p->load(CATS::Problem::Source::Zip->new($source_name, $p), $cid, new_id, 0, undef);
+    my $error = $type  eq 'Gen' ?
+        $p->load_gen($source_name, $cid, new_id) :
+        $p->load(("CATS::Problem::Source::" . $type)->new($source_name, $p), $cid, new_id, 0, $type eq 'Git' ? $source_name : undef);
     $t->param(problem_import_log => $p->encoded_import_log());
     $error ||= !add_problem_to_contest($p->{id}, $problem_code);
 
@@ -177,7 +177,7 @@ sub problems_add_new
     $file =~ /\.(zip|ZIP)$/
         or return msg(53);
     my $fname = save_uploaded_file('zip');
-    problems_add($fname, 0);
+    problems_add($fname, 'Zip');
     unlink $fname;
 }
 
@@ -185,7 +185,14 @@ sub problems_add_new_remote
 {
     my $url = param('remote_url') || '';
     $url or return msg(1091);
-    problems_add($url, 1);
+    problems_add($url, 'Git');
+}
+
+sub problems_add_new_gen
+{
+    my $gen = param('gen') || '';
+    $gen or return msg(1092);
+    problems_add($gen, 'Gen');    
 }
 
 sub download_problem
@@ -327,6 +334,11 @@ sub problems_submit
         $t->param(de_name => $de->{description});
     }
 
+    my $gp_id = $dbh->selectrow_array(q~
+        SELECT id FROM gen_problems 
+        WHERE problem_id = ? AND account_id = ?~, {},           # TODO: generate additional gen_problem for anon user
+        $pid, $submit_uid);                                     # if he isn't in every pactice contest
+
     # Forbid repeated submissions of the identical code with the same DE.
     my $source_hash = CATS::Utils::source_hash($src);
     my ($same_source) = $dbh->selectrow_array(qq~
@@ -344,11 +356,12 @@ sub problems_submit
     $dbh->do(qq~
         INSERT INTO reqs (
             id, account_id, problem_id, contest_id,
-            submit_time, test_time, result_time, state, received
+            submit_time, test_time, result_time, state, received,
+            gen_problem_id
         ) VALUES (
-            ?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,?)~,
+            ?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,?,?)~,
         {},
-        $rid, $submit_uid, $pid, $cid, $state, 0);
+        $rid, $submit_uid, $pid, $cid, $state, 0, $gp_id);
 
     my $s = $dbh->prepare(qq~
         INSERT INTO sources(req_id, de_id, src, fname, hash) VALUES (?,?,?,?,?)~);
@@ -552,6 +565,7 @@ sub problems_frame_jury_action
     defined param('replace') and return problems_replace;
     defined param('add_new') and return problems_add_new;
     defined param('add_remote') and return problems_add_new_remote;
+    defined param('add_gen') and return problems_add_new_gen;
     defined param('std_solution') and return problems_submit_std_solution;
     defined param('mass_retest') and return problems_mass_retest;
     my $cpid = url_param('delete');
@@ -728,7 +742,7 @@ sub problems_frame
     my $test_count_sql = $is_jury ? '(SELECT COUNT(*) FROM tests T WHERE T.problem_id = P.id) AS test_count,' : '';
     my $sth = $dbh->prepare(qq~
         SELECT
-            CP.id AS cpid, P.id AS pid,
+            CP.id AS cpid, P.id AS pid, P.gen AS pro_generator,
             ${select_code} AS code, P.title AS problem_name, OC.title AS contest_name,
             ($reqs_count_sql $cats::st_accepted$account_condition) AS accepted_count,
             ($reqs_count_sql $cats::st_wrong_answer$account_condition) AS wrong_answer_count,
@@ -740,7 +754,8 @@ sub problems_frame
             P.upload_date,
             (SELECT A.login FROM accounts A WHERE A.id = P.last_modified_by) AS last_modified_by,
             SUBSTRING(P.explanation FROM 1 FOR 1) AS has_explanation,
-            $test_count_sql CP.testsets, CP.points_testsets, P.lang, P.memory_limit, P.time_limit, CP.max_points, P.repo
+            $test_count_sql CP.testsets, CP.points_testsets, P.lang, P.memory_limit, P.time_limit, CP.max_points,
+            P.repo, P.gen
         FROM problems P, contest_problems CP, contests OC
         WHERE CP.problem_id = P.id AND OC.id = P.contest_id AND CP.contest_id = ?$hidden_problems
         ~ . order_by
@@ -767,7 +782,7 @@ sub problems_frame
         $t->param(status_list => \@status_list, editable => 1);
     }
 
-    my $text_link_f = $is_jury || $contest->{is_hidden} || $contest->{local_only} ?
+    my $text_link_f = $is_jury || $contest->{is_hidden} || $contest->{local_only}?
         \&url_f : \&CATS::StaticPages::url_static;
 
     my $fetch_record = sub($)
@@ -775,6 +790,7 @@ sub problems_frame
         my $c = $_[0]->fetchrow_hashref or return ();
         $c->{status} ||= 0;
         my $remote_url = defined $c->{repo} && $c->{repo} !~ '\d+' ? $c->{repo} : undef;
+        die $c->{pro_generator};
         return (
             href_delete => url_f('problems', 'delete' => $c->{cpid}),
             href_change_status => url_f('problems', 'change_status' => $c->{cpid}),

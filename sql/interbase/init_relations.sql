@@ -1,4 +1,4 @@
-
+CONNECT "C:\diplom\cats-main\ib_data\CATS.GDB" USER "sysdba" PASSWORD "masterkey";
 CREATE TABLE judges (
     id      INTEGER NOT NULL PRIMARY KEY,
     jsid    VARCHAR(30) DEFAULT NULL,
@@ -107,6 +107,7 @@ CREATE TABLE problems (
     difficulty      INTEGER DEFAULT 100,
     author          VARCHAR(200) DEFAULT '',
     repo            VARCHAR(200) DEFAULT '', /* Default -- based on id. */
+    gen             VARCHAR(200),
     commit_sha      CHAR(40),
     input_file      VARCHAR(200) NOT NULL,
     output_file     VARCHAR(200) NOT NULL,
@@ -185,15 +186,16 @@ CREATE TABLE pictures (
 
 
 CREATE TABLE tests (
-    problem_id      INTEGER REFERENCES problems(id) ON DELETE CASCADE,
-    rank            INTEGER CHECK (rank > 0),
-    generator_id    INTEGER DEFAULT NULL REFERENCES problem_sources(id) ON DELETE CASCADE,
-    param           VARCHAR(200) DEFAULT NULL,
-    std_solution_id INTEGER DEFAULT NULL REFERENCES problem_sources(id) ON DELETE CASCADE,
-    in_file         BLOB,
-    out_file        BLOB,
-    points          INTEGER,
-    gen_group       INTEGER
+    problem_id          INTEGER REFERENCES problems(id) ON DELETE CASCADE,
+    rank                INTEGER CHECK (rank > 0),
+    generator_id        INTEGER DEFAULT NULL REFERENCES problem_sources(id) ON DELETE CASCADE,
+    param               VARCHAR(200) DEFAULT NULL,
+    std_solution_id     INTEGER DEFAULT NULL REFERENCES problem_sources(id) ON DELETE CASCADE,
+    in_file             BLOB,
+    out_file            BLOB,
+    points              INTEGER,
+    gen_group           INTEGER,
+    gen_problem_id      INTEGER REFERENCES gen_problems(id) ON DELETE CASCADE
 );
 
 
@@ -258,7 +260,8 @@ CREATE TABLE reqs (
     judge_id    INTEGER REFERENCES judges(id) ON DELETE SET NULL,
     received    INTEGER DEFAULT 0 CHECK (received IN (0, 1)),
     points      INTEGER,
-    testsets    VARCHAR(200)
+    testsets    VARCHAR(200),
+    gen_problem_id INTEGER REFERENCES gen_problems(id) ON DELETE CASCADE
 );
 CREATE DESCENDING INDEX idx_reqs_submit_time ON reqs(submit_time);
 
@@ -323,6 +326,21 @@ CREATE TABLE prizes (
     name   VARCHAR(200) NOT NULL,
     rank   INTEGER NOT NULL
 );
+            
+CREATE TABLE problem_generators (
+    id      INTEGER NOT NULL PRIMARY KEY,
+    name    VARCHAR(200) UNIQUE
+);
+
+CREATE TABLE gen_problems (
+    id          INTEGER NOT NULL PRIMARY KEY,
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    problem_id  INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    contest_id  INTEGER REFERENCES contests(id) ON DELETE CASCADE,
+    state       INTEGER,
+    data        BLOB,
+    UNIQUE(account_id, problem_id)
+);
 
 
 /*
@@ -343,6 +361,7 @@ CREATE GENERATOR login_seq;
 
 SET GENERATOR key_seq TO 1000;
 
+INSERT INTO contests(id, title, ctype) VALUES(1, 'Турнир', 1);
 
 INSERT INTO default_de (id, code, description, file_ext) VALUES (GEN_ID(key_seq, 1), 101, 'Cross-platform C/C++ compiler', 'cpp;c');
 INSERT INTO default_de (id, code, description, file_ext) VALUES (GEN_ID(key_seq, 1), 102, 'GNU C++', 'cpp;c;cxx');
