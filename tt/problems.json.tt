@@ -2,6 +2,7 @@
 [%- USE Javascript -%]
 {
 [% IF message %]"message": "[% message | $Javascript %]"
+[% IF rid %],"rid": "[% rid %]"[% END %]
 [% ELSE %]
 "problems": [
 [% FOREACH p IN problems %]

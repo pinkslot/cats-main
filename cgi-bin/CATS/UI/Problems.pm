@@ -262,6 +262,7 @@ sub problems_submit
 {
     my $pid = param('problem_id')
         or return msg(1012);
+    my $gen_req = param('generating_req');
 
     my $file = param('source') // '';
     $file ne '' || param('source_text') ne '' or return msg(1009);
@@ -295,17 +296,24 @@ sub problems_submit
         }
     }
 
+    if (param('generating_req')) {
+        my $rm = $dbh->selectrow_array("SELECT run_method FROM problems WHERE id = ?", {}, $pid);
+        $rm == $cats::rm_gen_problem or return msg(1015);
+    }
+
     my $submit_uid = $uid // ($contest->is_practice ? get_anonymous_uid() : die);
 
     return msg(131) if problem_submit_too_frequent($submit_uid);
 
+    my ($reqs_count_field, $comp) = $gen_req ? ('R.id', -1) :
+        $contest->{max_reqs} && !$is_jury ? ('COUNT(*)', $contest->{max_reqs}) : ();
     my $prev_reqs_count;
-    if ($contest->{max_reqs} && !$is_jury) {
-        $prev_reqs_count = $dbh->selectrow_array(q~
-            SELECT COUNT(*) FROM reqs R
+    if ($reqs_count_field) {
+        $prev_reqs_count = $dbh->selectrow_array(qq~
+            SELECT $reqs_count_field FROM reqs R
             WHERE R.account_id = ? AND R.problem_id = ? AND R.contest_id = ?~, {},
             $submit_uid, $pid, $cid);
-        return msg(137) if $prev_reqs_count >= $contest->{max_reqs};
+        $t->param(rid => $prev_reqs_count) and return msg(137) if $prev_reqs_count && $prev_reqs_count >= $comp;
     }
 
     my $src = param('source_text') || upload_source('source');
@@ -327,14 +335,15 @@ sub problems_submit
         SELECT FIRST 1 S.req_id
         FROM sources S INNER JOIN reqs R ON S.req_id = R.id
         WHERE
-            R.account_id = ? AND R.problem_id = ? AND
-            R.contest_id = ? AND S.hash = ? AND S.de_id = ?~, {},
+            R.account_id = ? AND R.problem_id = ? AND R.contest_id = ? AND 
+            S.hash = ? AND S.de_id = ? AND S.stype = $cats::solving~, {},
         $submit_uid, $pid, $cid, $source_hash, $did);
     $same_source and return msg(132);
 
     my $rid = new_id;
 
-    my $state = $is_jury && param('ignore') ? $cats::st_ignore_submit : $cats::st_not_processed;
+    my $state = $gen_req ? $cats::st_gen_request :
+        $is_jury && param('ignore') ? $cats::st_ignore_submit : $cats::st_not_processed;
     $dbh->do(qq~
         INSERT INTO reqs (
             id, account_id, problem_id, contest_id,
@@ -344,21 +353,24 @@ sub problems_submit
         {},
         $rid, $submit_uid, $pid, $cid, $state, 0);
 
-    my $s = $dbh->prepare(qq~
-        INSERT INTO sources(req_id, de_id, src, fname, hash) VALUES (?,?,?,?,?)~);
-    $s->bind_param(1, $rid);
-    $s->bind_param(2, $did);
-    $s->bind_param(3, $src, { ora_type => 113 } ); # blob
-    $s->bind_param(4, $file ? "$file" :
-        "$rid." . CATS::DevEnv->new($dbh, id => $did)->default_extension($did));
-    $s->bind_param(5, $source_hash);
-    $s->execute;
-    $dbh->commit;
+    unless ($gen_req) {
+        my $s = $dbh->prepare(qq~
+            INSERT INTO sources(req_id, de_id, src, fname, hash) VALUES (?,?,?,?,?)~);
+        $s->bind_param(1, $rid);
+        $s->bind_param(2, $did);
+        $s->bind_param(3, $src, { ora_type => 113 } ); # blob
+        $s->bind_param(4, $file ? "$file" :
+            "$rid." . CATS::DevEnv->new($dbh, id => $did)->default_extension($did));
+        $s->bind_param(5, $source_hash);
+        $s->execute;
+        $dbh->commit;        
+    }
 
     $t->param(solution_submitted => 1, href_console => url_f('console'));
     $time_since_finish > 0 ? msg(87) :
     defined $prev_reqs_count ? msg(88, $contest->{max_reqs} - $prev_reqs_count - 1) :
     msg(1014);
+    $t->param(rid => $rid);
 }
 
 sub problems_submit_std_solution

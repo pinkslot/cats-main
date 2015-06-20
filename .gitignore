@@ -2,6 +2,7 @@ judge/*
 spawner/*
 perl/*
 ev/*
+AQuiz/*
 testutils/*
 easyGenPerl/*
 *.dll

@@ -349,7 +349,8 @@ sub prepare_source
     else {
         my $se = encoding_param('src_enc', 'WINDOWS-1251');
         if (encodings()->{$se} && $sources_info->{file_name} !~ m/\.zip$/) {
-            Encode::from_to($sources_info->{src}, $se, 'utf-8');
+            Encode::from_to($sources_info->{src}, $se, 'utf-8')
+                if $sources_info->{file_name} !~ m/\.ege$/;
             $sources_info->{src} = Encode::decode_utf8($sources_info->{src});
         }
     }
