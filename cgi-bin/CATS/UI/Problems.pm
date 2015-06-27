@@ -258,6 +258,16 @@ sub problem_submit_too_frequent
     ($prev->[0] || 1) < 3/$SECONDS_PER_DAY || ($prev->[1] || 1) < 60/$SECONDS_PER_DAY;
 }
 
+
+sub select_src_id
+{
+    my %cond = @_;
+    $dbh->selectrow_array(qq~
+        SELECT FIRST 1 S.req_id
+        FROM sources S INNER JOIN reqs R ON S.req_id = R.id
+        WHERE ~ . join(' AND ', map("$_ = ?", keys %cond)), {}, values %cond);
+}
+
 sub problems_submit
 {
     my $pid = param('problem_id')
@@ -296,14 +306,16 @@ sub problems_submit
         }
     }
 
-    if (param('generating_req')) {
-        my $rm = $dbh->selectrow_array("SELECT run_method FROM problems WHERE id = ?", {}, $pid);
-        $rm == $cats::rm_gen_problem or return msg(1015);
-    }
-
     my $submit_uid = $uid // ($contest->is_practice ? get_anonymous_uid() : die);
-
     return msg(131) if problem_submit_too_frequent($submit_uid);
+
+    my $rm = $dbh->selectrow_array("SELECT run_method FROM problems WHERE id = ?", {}, $pid);
+    $gen_req && $rm != $cats::rm_gen_problem and return msg(1015);
+    !$gen_req && $rm == $cats::rm_gen_problem && !select_src_id(
+        'R.account_id' => $submit_uid,
+        'R.problem_id' => $pid,
+        'R.contest_id' => $cid,
+        'S.stype' => $cats::quiz_problem) and return msg(1016);
 
     my ($reqs_count_field, $comp) = $gen_req ? ('R.id', -1) :
         $contest->{max_reqs} && !$is_jury ? ('COUNT(*)', $contest->{max_reqs}) : ();
@@ -331,14 +343,13 @@ sub problems_submit
 
     # Forbid repeated submissions of the identical code with the same DE.
     my $source_hash = CATS::Utils::source_hash($src);
-    my ($same_source) = $dbh->selectrow_array(qq~
-        SELECT FIRST 1 S.req_id
-        FROM sources S INNER JOIN reqs R ON S.req_id = R.id
-        WHERE
-            R.account_id = ? AND R.problem_id = ? AND R.contest_id = ? AND 
-            S.hash = ? AND S.de_id = ? AND S.stype = $cats::solving~, {},
-        $submit_uid, $pid, $cid, $source_hash, $did);
-    $same_source and return msg(132);
+    select_src_id(
+        'R.account_id' => $submit_uid,
+        'R.problem_id' => $pid,
+        'R.contest_id' => $cid,
+        'S.hash' => $source_hash,
+        'S.de_id' => $did,
+        'S.stype' => $cats::solving) and return msg(132);
 
     my $rid = new_id;
 
@@ -355,13 +366,14 @@ sub problems_submit
 
     unless ($gen_req) {
         my $s = $dbh->prepare(qq~
-            INSERT INTO sources(req_id, de_id, src, fname, hash) VALUES (?,?,?,?,?)~);
+            INSERT INTO sources(req_id, de_id, src, fname, hash, stype) VALUES (?,?,?,?,?,?)~);
         $s->bind_param(1, $rid);
         $s->bind_param(2, $did);
         $s->bind_param(3, $src, { ora_type => 113 } ); # blob
         $s->bind_param(4, $file ? "$file" :
             "$rid." . CATS::DevEnv->new($dbh, id => $did)->default_extension($did));
         $s->bind_param(5, $source_hash);
+        $s->bind_param(6, $cats::solving);
         $s->execute;
         $dbh->commit;        
     }
@@ -402,11 +414,12 @@ sub problems_submit_std_solution
         );
 
         my $s = $dbh->prepare(qq~
-            INSERT INTO sources(req_id, de_id, src, fname) VALUES (?, ?, ?, ?)~);
+            INSERT INTO sources(req_id, de_id, src, fname, stype) VALUES (?, ?, ?, ?, ?)~);
         $s->bind_param(1, $rid);
         $s->bind_param(2, $did);
         $s->bind_param(3, $src, { ora_type => 113 } ); # blob
         $s->bind_param(4, $fname);
+        $s->bind_param(5, $cats::solving);
         $s->execute;
 
         $ok = 1;

@@ -270,7 +270,7 @@ sub get_sources_info
             INNER JOIN contests C ON C.id = R.contest_id
             INNER JOIN contest_problems CP ON CP.contest_id = C.id AND CP.problem_id = P.id
             INNER JOIN contest_accounts CA ON CA.contest_id = C.id AND CA.account_id = A.id
-        WHERE req_id IN ($req_id_list)~, { Slice => {} });
+        WHERE req_id IN ($req_id_list) AND S.stype != $cats::quiz_correct~, { Slice => {} });
     $dbh->{ib_enable_utf8} = 1; # Resume "normal" operation.
 
     my $official = $p{get_source} && !$is_jury && CATS::Contest::current_official;

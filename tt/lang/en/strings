@@ -101,6 +101,7 @@
 1013 "Unable to determine the development environnment."
 1014 "Solution is queued for testing."
 1015 "Generating for this problem not available."
+1016 "Problem has not yet been generated."
 1017 "No more problem codes available."
 018 "Права команд были успешно измненены."
 019 "Не удается изменить права команд."

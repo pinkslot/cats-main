@@ -117,8 +117,9 @@ sub console_content
     ~;
     my $no_de = 'CAST(NULL AS VARCHAR(200)) AS de';
     my $de_sql = $is_jury ?
-        '(SELECT description FROM default_de dd
-            INNER JOIN sources s ON s.de_id = dd.id WHERE s.req_id = R.id) AS de' : $no_de;
+        "(SELECT description FROM default_de dd
+            INNER JOIN sources s ON s.de_id = dd.id
+            WHERE s.req_id = R.id AND s.stype = $cats::solving) AS de" : $no_de;
     my $city_sql = $is_jury ?
         q~ || (CASE WHEN A.city IS NULL OR A.city = '' THEN '' ELSE ' (' || A.city || ')' END)~ : '';
     my %console_select = (

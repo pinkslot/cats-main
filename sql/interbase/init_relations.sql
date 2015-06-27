@@ -292,7 +292,8 @@ CREATE TABLE sources (
     de_id   INTEGER NOT NULL REFERENCES default_de(id) ON DELETE CASCADE,
     src     BLOB,
     fname   VARCHAR(200),
-    hash    CHAR(32) /* md5_hex */
+    hash    CHAR(32), /* md5_hex */
+    stype   INTEGER
 );
 
 
